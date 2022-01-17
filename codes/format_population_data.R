@@ -2,6 +2,8 @@ library(tidyverse)
 
 # dengue data -----------------------------------
 brazil_dengue <- read.csv("../data/dengue/project_tycho_BRAZIL.csv")
+## better dengue data
+brazil <- read.csv('../data/dengue/Lowe_etal_LPH_2021_brazil_dengue_data_2000_2019.csv')
 
 y <- subset(brazil_dengue, Admin1Name == "ACRE")
 plot.ts(y$CountValue, type = 'b')
@@ -69,3 +71,77 @@ PR_tsir <- runtsir(data = PR,
 
 plotres(PR_tsir)
 
+# Thailand comparisons
+tfr_by_province <- read.csv('../data/birth_rates/thailand_province_fertlity_rates.csv')
+cbr_by_region <- read.csv('../data/birth_rates/thailand_region_birth_rates.csv')
+prov_x_region <- read.csv('../data/metadata/thailand_province_regions.csv')
+
+tfr_with_region <- tfr_by_province %>%
+  left_join(prov_x_region)
+
+# boxplot TFR within/across regions
+pdf('../figures/birth_rates/Thailand_TFR_by_region.pdf', width = 6, height = 4)
+ggplot(tfr_with_region, 
+       aes(
+         x = Region,
+         y = Total_fertility_rate,
+         fill = Region
+       )
+) +
+  geom_boxplot() +
+  geom_jitter(
+    color="black",
+    size=0.4,
+    alpha=0.9
+  ) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    plot.title = element_text(size=11)
+  ) +
+  ggtitle("Thailand") +
+  xlab("Region") +
+  ylab("Total fertility rate")
+dev.off()
+
+# CBR through time
+thailand_dengue <- read.csv("../data/dengue/project_tycho_THAILAND_weekly.csv")
+range(thailand_dengue$Year)
+br_row <- which(br_data$Country.Name == "Thailand")
+br_x <- br_data[br_row, 30:56]
+br_xx <- br_x %>% gather(key = "Year", "Crude_birth_rate")
+br_xx$Year <- gsub("X", "", br_xx$Year)
+br_xx$Region <- "National"
+
+cbr_by_region <- rbind(cbr_by_region, 
+                       br_xx[,c("Region", "Year", "Crude_birth_rate")])
+
+pdf('../figures/birth_rates/Thailand_CBR_by_region.pdf', 
+    width = 11, 
+    height = 6)
+
+ggplot(cbr_by_region, 
+       aes(
+         x = as.factor(Year),
+         y = Crude_birth_rate,
+         group = Region,
+         color = Region
+         )
+       ) +
+  geom_line() +
+  geom_point() +
+  annotate("rect", 
+           xmin = as.factor(1993), 
+           xmax = as.factor(2011), 
+           ymin = 10, 
+           ymax = 35,
+           alpha = .2) +
+  annotate("text", 
+           label = "Dengue data years", 
+           x = as.factor(2004), 
+           y = 30) +
+  theme_bw() +
+  ylab("Crude birth rate") +
+  xlab("") +
+  ggtitle("Thailand")
+dev.off()  

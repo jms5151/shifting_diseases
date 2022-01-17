@@ -65,7 +65,12 @@ iq_dis_weekly <- monthly_to_weekly_disagg(dfMonthly = iq_monthly,
 all_data <- iq %>%
   left_join(iq_dis_weekly, by = c("Year", "WOY"))
 
-plot(all_data$week_start_date, all_data$total_cases, type = 'l', xlab = "Date", ylab = "cases")
+plot(all_data$week_start_date, 
+     all_data$total_cases, 
+     type = 'l', 
+     xlab = "Date", 
+     ylab = "cases",
+     main = "Iquitos, Peru")
 lines(all_data$week_start_date, all_data$cases, col = 'blue')
 legend("topleft",
        c("observed", "time disaggregated"),
