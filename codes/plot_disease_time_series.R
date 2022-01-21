@@ -19,7 +19,6 @@ dengue_dfs = lapply(dengue_filepaths, read.csv)
 fig_dir <- "../figures/disease_time_series/dengue_"
 
 
-
 long_plot(df = iquitos,
           name = "iquitos")
 
