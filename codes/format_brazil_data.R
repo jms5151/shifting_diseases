@@ -1,4 +1,8 @@
 library(tidyverse)
+library(stringr)
+
+# source custom function to split tibbles to list of dataframes
+source('codes/functions_tibble_to_list.R')
 
 # population data ------------------------------------------
 # load data
@@ -17,8 +21,15 @@ orig_dengue_data <- orig_dengue_data[, c('micro_code', 'state_name')]
 orig_dengue_data <- orig_dengue_data[!duplicated(orig_dengue_data), ]
 
 # convert Spanish to English characters for state names
-orig_dengue_data$Admin1Name <- gsub('Ã', 'a', orig_dengue_data$state_name)
-orig_dengue_data$Admin1Name <- gsub('¡', '', orig_dengue_data$Admin1Name)
+orig_dengue_data$Admin1Name <- iconv(orig_dengue_data$state_name, "latin1", "ASCII//TRANSLIT")
+orig_dengue_data$Admin1Name <- gsub('[[:punct:]]', '', orig_dengue_data$Admin1Name)
+orig_dengue_data$Admin1Name <- str_to_title(orig_dengue_data$Admin1Name)
+
+# fix specific names
+orig_dengue_data$Admin1Name <- gsub('Esparito Santo', 'Espirito Santo', orig_dengue_data$Admin1Name)
+orig_dengue_data$Admin1Name <- gsub('Paraaba', 'Paraiba', orig_dengue_data$Admin1Name)
+orig_dengue_data$Admin1Name <- gsub('Piaua', 'Piaui', orig_dengue_data$Admin1Name)
+orig_dengue_data$Admin1Name <- gsub('Rondania', 'Rondonia', orig_dengue_data$Admin1Name)
 
 # if using microregion names - convert Spanish to English characters
 # orig_dengue_data$micro_name <- gsub('<c2>', 'A', orig_dengue_data$micro_name)
@@ -55,16 +66,29 @@ brazil_demography <- brazil_live_births %>%
   summarise('Total_live_births' = sum(Live_births_mothers_residence)) %>%
   left_join(brazil_pop, by = c('Admin1Name', 'Year')) %>%
   filter(!is.na(Admin1Name)) %>%
-  select(-c('ADM0_NAME'
+  dplyr::select(-c('ADM0_NAME'
             , 'ADM1_NAME'
             , 'system.index'
             , 'sum'))
+
+# split df to list
+brazil_demography <- split_tibble(brazil_demography, 'Admin1Name')
 
 # dengue data ---------------------------------------------
 # load data
 brazil_dengue_data_weekly <- read.csv('../data/dengue/Lowe_etal_LPH_2021_brazil_dengue_data_2000_2019_weekly.csv')
 
 # convert Spanish to English characters
-brazil_dengue_data_weekly$Admin1Name <- gsub('Ã', 'a', brazil_dengue_data_weekly$Admin1Name)
-brazil_dengue_data_weekly$Admin1Name <- gsub('¡', '', brazil_dengue_data_weekly$Admin1Name)
+brazil_dengue_data_weekly$Admin1Name <- iconv(brazil_dengue_data_weekly$Admin1Name, "latin1", "ASCII//TRANSLIT")
+brazil_dengue_data_weekly$Admin1Name <- gsub('[[:punct:]]', '', brazil_dengue_data_weekly$Admin1Name)
+brazil_dengue_data_weekly$Admin1Name <- str_to_title(brazil_dengue_data_weekly$Admin1Name)
+
+# fix specific names
+brazil_dengue_data_weekly$Admin1Name <- gsub('Esparito Santo', 'Espirito Santo', brazil_dengue_data_weekly$Admin1Name)
+brazil_dengue_data_weekly$Admin1Name <- gsub('Paraaba', 'Paraiba', brazil_dengue_data_weekly$Admin1Name)
+brazil_dengue_data_weekly$Admin1Name <- gsub('Piaua', 'Piaui', brazil_dengue_data_weekly$Admin1Name)
+brazil_dengue_data_weekly$Admin1Name <- gsub('Rondania', 'Rondonia', brazil_dengue_data_weekly$Admin1Name)
+
+# split df to list
+brazil_dengue_data_weekly <- split_tibble(brazil_dengue_data_weekly, 'Admin1Name')
 

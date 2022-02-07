@@ -1,34 +1,30 @@
 # concatenate data for tsir models -----------------------
-library(tsiR)
-library(tidyverse)
 
-# set infectious period to 1 to keep weekly case data format
-IP = 1
+# source custom function to format data
+source('codes/functions_format_tsir_data.R')
 
 # Brazil -------------------------------------------------
-## need to run for each state
 source('codes/format_brazil_data.R')
 
-brazil_times <- brazil_dengue_data_weekly$Year
+# list Brazilian states
+brazilian_states <- names(brazil_dengue_data_weekly)
 
-brazil_tsir_data <- tsiRdata(time = brazil_times
-                             , cases = brazil_dengue_data_weekly$cases
-                             , births = brazil_demography$Total_live_births
-                             , pop = brazil_demography$Interpolated_pop_sum
-                             , IP = IP)
+# format data
+brazil_tsir_data <- format_tsir_data(
+  region_names = brazilian_states
+  , disease_list = brazil_dengue_data_weekly
+  , demography_list = brazil_demography
+  )
 
-brazil_tsir_data <- brazil_tsir_data %>%
-  left_join(brazil_dengue_data_weekly)
-
-# Thailand -----------------------------------------------
-## need to run for each province
+# Thailand -------------------------------------------------
 source('codes/format_thailand_data.R')
 
-thailand_times <- thailand_dengue_data_weekly$Year
+# list Thai provinces
+thailand_provinces <- names(thailand_dengue_data_weekly)
 
-thailand_tsir_data <- tsiRdata(time = thailand_times
-                             , cases = thailand_dengue_data_weekly$cases
-                             , births = (thailand_demography$Crude_birth_rate_interpolated * thailand_demography$Interpolated_pop_sum/1000)
-                             , pop = thailand_demography$Interpolated_pop_sum
-                             , IP = IP)
-
+# format data
+thailand_tsir_data <- format_tsir_data(
+  region_names = thailand_provinces
+  , disease_list = thailand_dengue_data_weekly
+  , demography_list = thailand_demography
+)

@@ -1,11 +1,15 @@
 library(tidyverse)
 library(stringr)
 
+# source custom function to split tibbles to list of dataframes
+source('codes/functions_tibble_to_list.R')
+
 # population data ------------------------------------------
 # load data
 load('../data/population/admin_unit_pop_count_interpolated.RData')
 
 # subset to Thailand data
+# missing data from Samut Songkhram
 thailand_pop <- subset(admin_pop_full, ADM0_NAME == 'Thailand')
 
 # format province names
@@ -39,7 +43,9 @@ thailand_CBR_interpolated$Admin1Name[thailand_CBR_interpolated$Province == 'Patt
 thailand_demography <- thailand_CBR_interpolated %>%
   left_join(thailand_pop) %>%
   filter(!is.na(Admin1Name)) %>%
-  select(-c('Crude_birth_rate'
+  filter(Year >= 1995) %>%
+  mutate("Total_live_births" = Crude_birth_rate_interpolated * Interpolated_pop_sum/1000) %>%
+  dplyr::select(-c('Crude_birth_rate'
             , 'Province_original'
             , 'Province'
             , "ADM0_NAME"
@@ -47,9 +53,16 @@ thailand_demography <- thailand_CBR_interpolated %>%
             , "system.index"
             , "sum"))
 
+thailand_demography <- thailand_demography[complete.cases(thailand_demography), ]
+
+# split df to list
+thailand_demography <- split_tibble(thailand_demography, 'Admin1Name')
 
 # dengue data ---------------------------------------------
 # load data
 thailand_dengue_data_weekly <- read.csv('../data/dengue/project_tycho_THAILAND_weekly.csv')
 thailand_dengue_data_weekly$Admin1Name <- str_to_title(thailand_dengue_data_weekly$Admin1Name)
+
+# split df to list
+thailand_dengue_data_weekly <- split_tibble(thailand_dengue_data_weekly, 'Admin1Name')
 
