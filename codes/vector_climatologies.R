@@ -1,6 +1,10 @@
 # load libraries
 library(tidyverse)
 library(ggplot2)
+library(ggpubr)
+
+# Figure directory
+fig_dir <- '../figures/vector_climatologies/'
 
 # ENSO -------------------------------------------------------------------------
 # load data
@@ -20,7 +24,7 @@ LN_years_24mo <- sort(c(as.integer(LN_anom$Year), (as.integer(LN_anom$Year) + 1)
 aedes <- read.csv('../data/vectors/gbif_aedes.csv', sep = '\t')
 anopheles <- read.csv('../data/vectors/gbif_anopheles.csv', sep = '\t')
 
-# aggregate to find good time series to work with
+# function to aggregate data
 aggregate_vectors <- function(df, location){
   if(location == 'country'){
     df$Location <- df$countryCode
@@ -51,131 +55,38 @@ aggregate_vectors <- function(df, location){
   df
 }
 
+# plotting functions
+vector_heatmap <- function(df, title){
+  ggplot(df, aes(YearMonth, Location, fill = normalized_count)) + 
+    geom_tile() +
+    theme_bw() +
+    xlab('Year-Month') +
+    ylab('') +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+    ggtitle(title)
+}
 
-# aedes -----------------------------------------
-ae_vec <- aggregate_vectors(df = aedes
-                            , location = 'country'
-                            # , location = 'state'
-                            )
-
-ae_highlySampledLocations <- names(which(table(ae_vec$Location) > 100))
-
-ae_vec <- ae_vec[ae_vec$Location %in% ae_highlySampledLocations, ]
-
-# anopheles -------------------------------------
-an_vec <- aggregate_vectors(df = anopheles
-                            , location = 'country'
-                            # , location = 'state'
-                            )
-an_highlySampledLocations <- names(which(table(an_vec$Location) > 100))
-
-an_vec <- an_vec[an_vec$Location %in% an_highlySampledLocations, ]
-
-# an_vec <- an_vec %>%
-#   # Anopheles, top countries
-#   filter(Location == 'US' | Location == 'MX' | Location == 'BR'| Location == 'AU' | Location == 'GB' | Location == 'IN' | Location == 'ZA')
-
-
-# heatmaps --------------------------------------
-aedes_heatmap_subset <- ggplot(ae_vec, aes(YearMonth, Location, fill = normalized_count)) + 
-  geom_tile() +
-  theme_bw() +
-  xlab('Year-Month') +
-  ylab('') +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-  ggtitle('Aedes')
-
-ggsave(aedes_heatmap_subset, file = '../figures/vector_climatologies/Aedes_heatmap.pdf', width = 10, height = 3)
-
-anopheles_heatmap_subset <- ggplot(an_vec, aes(YearMonth, Location, fill = normalized_count)) + 
-  geom_tile() +
-  theme_bw() +
-  xlab('Year-Month') +
-  ylab('') +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-  ggtitle('Anopheles')
-
-ggsave(anopheles_heatmap_subset, file = '../figures/vector_climatologies/Anopheles_heatmap.pdf', width = 10, height = 5)
-
-# long-term monthly values ----------------------
-vector_clim_plots <- function(df, title, filename, aedes){
-  plt <- ggplot(df, aes(x = as.factor(month), y = normalized_count, fill = Location)) +
+vector_monthly_climatology <- function(df){
+  ggplot(df, aes(x = as.factor(month), y = normalized_count, fill = Location)) +
     geom_boxplot() +
     facet_wrap(~Location) + 
     theme_bw() +
-    xlab('Month') + 
-    ggtitle(title)
-  
-  newfilename <- paste0('../figures/vector_climatologies/', filename, '.pdf')
-  if(aedes == TRUE){
-    ggsave(plt, file = newfilename, width = 10, height = 6)
-  } else
-    ggsave(plt, file = newfilename, width = 10, height = 8)
+    xlab('Month') +
+    ylab('Count (normalized)') +
+    theme(legend.position="none")
 }
 
-vector_clim_plots(
-  df = ae_vec
-  , title = 'Aedes monthly climatology'
-  , filename = 'Aedes_monthly_boxplot'
-  , aedes = TRUE
-)
-
-vector_clim_plots(
-  df = an_vec
-  , title = 'Anopheles monthly climatology'
-  , filename = 'Anopheles_monthly_boxplot'
-  , aedes = FALSE
-) 
-
-
-
-# compare monthly climatologies with ENSO years --------------------------------
-vector_clim_enso_plots <- function(lt_vec, en_vec, ln_vec, title, filename, aedes){
-  lt_vec$treatment <- 'climatology'
-  en_vec$treatment <- 'el nino'
-  ln_vec$treatment <- 'la nina'
-  
-  df <- bind_rows(list(lt_vec, en_vec, ln_vec))
-  
-  plt <- ggplot(df, aes(x = as.factor(month), y = normalized_count, fill = treatment)) +
+vector_monthly_climatology_with_enso <- function(df){
+  ggplot(df, aes(x = as.factor(month), y = normalized_count, fill = treatment)) +
     geom_boxplot() +
     facet_wrap(~Location) + 
     theme_bw() +
-    xlab('Month') + 
-    ggtitle(title)
-  
-  newfilename <- paste0('../figures/vector_climatologies/', filename, '.pdf')
-  if(aedes == TRUE){
-    ggsave(plt, file = newfilename, width = 14, height = 8)
-  } else
-    ggsave(plt, file = newfilename, width = 14, height = 10)
+    xlab('Month') +
+    ylab('Count (normalized)') 
+
 }
 
-# aedes
-ae_vec_EN <- ae_vec[ae_vec$year %in% EN_years_24mo, ]
-ae_vec_LN <- ae_vec[ae_vec$year %in% LN_years_24mo, ]
-
-vector_clim_enso_plots(lt_vec = ae_vec
-                       , en_vec = ae_vec_EN
-                       , ln_vec = ae_vec_LN
-                       , title = 'Aedes climatologies',
-                       filename = "aedes_enso_clim_distr",
-                       aedes = TRUE)
-
-# anopheles
-an_vec_EN <- an_vec[an_vec$year %in% EN_years_24mo, ]
-an_vec_LN <- an_vec[an_vec$year %in% LN_years_24mo, ]
-
-vector_clim_enso_plots(lt_vec = an_vec
-                       , en_vec = an_vec_EN
-                       , ln_vec = an_vec_LN
-                       , title = 'Anopheles climatologies',
-                       filename = "anopheles_enso_clim_distr",
-                       aedes = FALSE)
-
-
-# Log ratio of ENSO events : 'normal years' ------------------------------------
-lollipop_clim_plots <- function(lt_vec, en_vec, ln_vec, title, filename, aedes){
+lollipop_clim_plots <- function(lt_vec, en_vec, ln_vec){
   lt_vec <- lt_vec %>%
     group_by(Location, month) %>%
     summarise(lt_normalized_median = median(normalized_count, na.rm = T))
@@ -196,8 +107,8 @@ lollipop_clim_plots <- function(lt_vec, en_vec, ln_vec, title, filename, aedes){
     ) %>%
     select(-c('lt_normalized_median', 'en_normalized_median', 'ln_normalized_median')) %>%
     gather('type', 'log_ratio', el_nino:la_nina)
-  
-  plt <- ggplot(df, aes(x = month, y = log_ratio, color = type)) +
+
+  ggplot(df, aes(x = month, y = log_ratio, color = type)) +
     geom_segment(aes(x = month, xend = month, y = 0, yend = log_ratio)) +
     geom_point(size = 4) +
     facet_wrap(~Location) + 
@@ -205,37 +116,274 @@ lollipop_clim_plots <- function(lt_vec, en_vec, ln_vec, title, filename, aedes){
     xlab('Month') +
     ylab('Log ratio of monthly medians') +
     geom_hline(yintercept = 0) +
-    scale_x_continuous(breaks = seq(1, 12, 1)) + 
-    ggtitle(title)
-  
-  
-  newfilename <- paste0('../figures/vector_climatologies/', filename, '.pdf')
-  if(aedes == TRUE){
-    ggsave(plt, file = newfilename, width = 14, height = 8)
-  } else
-    ggsave(plt, file = newfilename, width = 14, height = 10)
+    scale_x_continuous(breaks = seq(1, 12, 1)) +
+    scale_color_manual(name = 'type', values = c('#00BA38', '#619CFF'))
 }
 
 
-lollipop_clim_plots(lt_vec = ae_vec
-                    , en_vec = ae_vec_EN
-                    , ln_vec = ae_vec_LN
-                    , title = 'Aedes'
-                    , filename = 'lollipop_climatologies_aedes'
-                    , aedes = TRUE
-                    )
+# write loop to go through data by vector genus and location -------------------
+vectors <- list(aedes, anopheles)
+vector_names <- c('Aedes', 'Anopheles')
+location_names <- c('country', 'state')
 
-lollipop_clim_plots(lt_vec = an_vec
-                    , en_vec = an_vec_EN
-                    , ln_vec = an_vec_LN
-                    , title = 'Anopheles'
-                    , filename = 'lollipop_climatologies_anopheles'
-                    , aedes = FALSE
-                    )
+for(i in 1:length(vectors)){
+  
+  for(j in 1:length(location_names)){
+    
+    # aggregate/summarize vector data by location and time
+    vector_df <- aggregate_vectors(
+      df = vectors[[i]]
+      , location = location_names[[j]]
+      )
+
+    # subset highly sampled data
+    highlySampledLocations <- names(which(table(vector_df$Location) > 100))
+    highlySampledLocations <- highlySampledLocations[!startsWith(x = highlySampledLocations, prefix = ',')] #remove errors
+    vector_df <- vector_df[vector_df$Location %in% highlySampledLocations, ]
+    
+    # for each highly sampled location
+    for(k in highlySampledLocations){
+      
+      # subset data
+      vector_df_sub <- subset(vector_df, Location == k)
+      
+      # only go on if there are values other than 0, 1, NA, and NaN
+      unique_vals <- unique(na.exclude(vector_df_sub$normalized_count))
+      
+      if(any(unique_vals > 0 & unique_vals < 1) == TRUE){
+        # create heatmap of time series data
+        fig1 <- vector_heatmap(df = vector_df_sub, title = paste0(vector_names[i], '; ', k))
+        
+        # create monthly climatology boxplot
+        fig2 <- vector_monthly_climatology(df = vector_df_sub)
+        
+        # subset ENSO data
+        vectors_el_nino <- vector_df_sub[vector_df_sub$year %in% EN_years_24mo, ]
+        vectors_la_nina <- vector_df_sub[vector_df_sub$year %in% LN_years_24mo, ]
+        
+        # add treatment labels
+        vector_df_sub$treatment <- 'climatology'
+        vectors_el_nino$treatment <- 'el nino'
+        vectors_la_nina$treatment <- 'la nina'
+        
+        # combine data
+        vector_df_sub_new <- bind_rows(
+          list(
+            vector_df_sub
+            , vectors_el_nino
+            , vectors_la_nina
+          )
+        )
+        
+        # create monthly climatology boxplots by ENSO condition
+        fig3 <- vector_monthly_climatology_with_enso(df = vector_df_sub_new)
+        
+        # create lollipop plots of ENSO anomalies
+        fig4 <- lollipop_clim_plots(
+          lt_vec = vector_df_sub
+          , en_vec = vectors_el_nino
+          , ln_vec = vectors_la_nina
+        )
+        
+        # combine all plots
+        combined_fig <- ggarrange(fig1, fig4, fig2, fig3, ncol = 2, nrow = 2)
+        
+        # save
+        country <- substr(k, nchar(k)-1, nchar(k))
+        state <- gsub("\\,.*", "", k)
+        if(country != state){
+          location_plain_name <- paste(country, state, sep = '_')
+        } else {
+          location_plain_name <- country
+        }
+        filename <- paste0(fig_dir, vector_names[i], '_', location_plain_name, '.pdf')
+        ggsave(filename, combined_fig, width = 14, height = 8)
+        
+      }
+    }
+  }
+}
+
+# # aedes -----------------------------------------
+# ae_vec <- aggregate_vectors(df = aedes
+#                             , location = 'country'
+#                             # , location = 'state'
+#                             )
+# 
+# ae_highlySampledLocations <- names(which(table(ae_vec$Location) > 100))
+# 
+# ae_vec <- ae_vec[ae_vec$Location %in% ae_highlySampledLocations, ]
+# 
+# # anopheles -------------------------------------
+# an_vec <- aggregate_vectors(df = anopheles
+#                             , location = 'country'
+#                             # , location = 'state'
+#                             )
+# an_highlySampledLocations <- names(which(table(an_vec$Location) > 100))
+# 
+# an_vec <- an_vec[an_vec$Location %in% an_highlySampledLocations, ]
+# 
+# # an_vec <- an_vec %>%
+# #   # Anopheles, top countries
+# #   filter(Location == 'US' | Location == 'MX' | Location == 'BR'| Location == 'AU' | Location == 'GB' | Location == 'IN' | Location == 'ZA')
 
 
+# # heatmaps --------------------------------------
+# aedes_heatmap_subset <- ggplot(ae_vec, aes(YearMonth, Location, fill = normalized_count)) + 
+#   geom_tile() +
+#   theme_bw() +
+#   xlab('Year-Month') +
+#   ylab('') +
+#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+#   ggtitle('Aedes')
+# 
+# ggsave(aedes_heatmap_subset, file = '../figures/vector_climatologies/Aedes_heatmap.pdf', width = 10, height = 3)
+# 
+# anopheles_heatmap_subset <- ggplot(an_vec, aes(YearMonth, Location, fill = normalized_count)) + 
+#   geom_tile() +
+#   theme_bw() +
+#   xlab('Year-Month') +
+#   ylab('') +
+#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+#   ggtitle('Anopheles')
+# 
+# ggsave(anopheles_heatmap_subset, file = '../figures/vector_climatologies/Anopheles_heatmap.pdf', width = 10, height = 5)
 
+# long-term monthly values ----------------------
+# vector_clim_plots <- function(df, title, filename, aedes){
+#   plt <- ggplot(df, aes(x = as.factor(month), y = normalized_count, fill = Location)) +
+#     geom_boxplot() +
+#     facet_wrap(~Location) + 
+#     theme_bw() +
+#     xlab('Month') + 
+#     ggtitle(title)
+#   
+#   newfilename <- paste0('../figures/vector_climatologies/', filename, '.pdf')
+#   if(aedes == TRUE){
+#     ggsave(plt, file = newfilename, width = 10, height = 6)
+#   } else
+#     ggsave(plt, file = newfilename, width = 10, height = 8)
+# }
+# 
+# vector_clim_plots(
+#   df = ae_vec
+#   , title = 'Aedes monthly climatology'
+#   , filename = 'Aedes_monthly_boxplot'
+#   , aedes = TRUE
+# )
+# 
+# vector_clim_plots(
+#   df = an_vec
+#   , title = 'Anopheles monthly climatology'
+#   , filename = 'Anopheles_monthly_boxplot'
+#   , aedes = FALSE
+# ) 
+# 
+# 
 
+# # compare monthly climatologies with ENSO years --------------------------------
+# vector_clim_enso_plots <- function(lt_vec, en_vec, ln_vec, title, filename, aedes){
+#   lt_vec$treatment <- 'climatology'
+#   en_vec$treatment <- 'el nino'
+#   ln_vec$treatment <- 'la nina'
+#   
+#   df <- bind_rows(list(lt_vec, en_vec, ln_vec))
+#   
+#   plt <- ggplot(df, aes(x = as.factor(month), y = normalized_count, fill = treatment)) +
+#     geom_boxplot() +
+#     facet_wrap(~Location) + 
+#     theme_bw() +
+#     xlab('Month') + 
+#     ggtitle(title)
+#   
+#   newfilename <- paste0('../figures/vector_climatologies/', filename, '.pdf')
+#   if(aedes == TRUE){
+#     ggsave(plt, file = newfilename, width = 14, height = 8)
+#   } else
+#     ggsave(plt, file = newfilename, width = 14, height = 10)
+# }
+# 
+# # aedes
+# ae_vec_EN <- ae_vec[ae_vec$year %in% EN_years_24mo, ]
+# ae_vec_LN <- ae_vec[ae_vec$year %in% LN_years_24mo, ]
+# 
+# vector_clim_enso_plots(lt_vec = ae_vec
+#                        , en_vec = ae_vec_EN
+#                        , ln_vec = ae_vec_LN
+#                        , title = 'Aedes climatologies',
+#                        filename = "aedes_enso_clim_distr",
+#                        aedes = TRUE)
+# 
+# # anopheles
+# an_vec_EN <- an_vec[an_vec$year %in% EN_years_24mo, ]
+# an_vec_LN <- an_vec[an_vec$year %in% LN_years_24mo, ]
+# 
+# vector_clim_enso_plots(lt_vec = an_vec
+#                        , en_vec = an_vec_EN
+#                        , ln_vec = an_vec_LN
+#                        , title = 'Anopheles climatologies',
+#                        filename = "anopheles_enso_clim_distr",
+#                        aedes = FALSE)
+# 
+
+# # Log ratio of ENSO events : 'normal years' ------------------------------------
+# lollipop_clim_plots <- function(lt_vec, en_vec, ln_vec, title, filename, aedes){
+#   lt_vec <- lt_vec %>%
+#     group_by(Location, month) %>%
+#     summarise(lt_normalized_median = median(normalized_count, na.rm = T))
+#   
+#   en_vec <- en_vec %>%
+#     group_by(Location, month) %>%
+#     summarise(en_normalized_median = median(normalized_count, na.rm = T))
+#   
+#   ln_vec <- ln_vec %>%
+#     group_by(Location, month) %>%
+#     summarise(ln_normalized_median = median(normalized_count, na.rm = T))
+#   
+#   df <- lt_vec %>%
+#     left_join(en_vec) %>%
+#     left_join(ln_vec) %>%
+#     mutate(el_nino = log(en_normalized_median / lt_normalized_median)
+#            , la_nina = log(ln_normalized_median / lt_normalized_median)
+#     ) %>%
+#     select(-c('lt_normalized_median', 'en_normalized_median', 'ln_normalized_median')) %>%
+#     gather('type', 'log_ratio', el_nino:la_nina)
+#   
+#   plt <- ggplot(df, aes(x = month, y = log_ratio, color = type)) +
+#     geom_segment(aes(x = month, xend = month, y = 0, yend = log_ratio)) +
+#     geom_point(size = 4) +
+#     facet_wrap(~Location) + 
+#     theme_bw() +
+#     xlab('Month') +
+#     ylab('Log ratio of monthly medians') +
+#     geom_hline(yintercept = 0) +
+#     scale_x_continuous(breaks = seq(1, 12, 1)) + 
+#     ggtitle(title)
+#   
+#   
+#   newfilename <- paste0('../figures/vector_climatologies/', filename, '.pdf')
+#   if(aedes == TRUE){
+#     ggsave(plt, file = newfilename, width = 14, height = 8)
+#   } else
+#     ggsave(plt, file = newfilename, width = 14, height = 10)
+# }
+# 
+# 
+# lollipop_clim_plots(lt_vec = ae_vec
+#                     , en_vec = ae_vec_EN
+#                     , ln_vec = ae_vec_LN
+#                     , title = 'Aedes'
+#                     , filename = 'lollipop_climatologies_aedes'
+#                     , aedes = TRUE
+#                     )
+# 
+# lollipop_clim_plots(lt_vec = an_vec
+#                     , en_vec = an_vec_EN
+#                     , ln_vec = an_vec_LN
+#                     , title = 'Anopheles'
+#                     , filename = 'lollipop_climatologies_anopheles'
+#                     , aedes = FALSE
+#                     )
 
 # 
 # 
