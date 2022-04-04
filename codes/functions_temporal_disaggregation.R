@@ -59,6 +59,7 @@ monthly_to_weekly_disagg <- function(dfMonthly, dateCol, casesCol){
   # format data
   df$Year <- format(df$Date, "%Y")
   df$WOY <- week(df$Date)
+  df$cases[df$cases < 0] <- 0
   
   # aggregate daily data to weekly values based on year 
   # and week of year (WOY)

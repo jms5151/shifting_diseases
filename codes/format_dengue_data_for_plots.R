@@ -68,6 +68,9 @@ brazil <- dengue_dfs[[brazilID]]
 
 # combine and summarize data 
 tychoIDs <- grep("tycho", dengue_filepaths)
+weeklyIDs <- grep("weekly", dengue_filepaths)
+tychoIDs <- tychoIDs[tychoIDs %in% weeklyIDs == FALSE]
+
 tychoDF <- do.call("rbind", dengue_dfs[tychoIDs])
 
 

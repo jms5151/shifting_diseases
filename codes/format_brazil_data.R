@@ -92,3 +92,26 @@ brazil_dengue_data_weekly$Admin1Name <- gsub('Rondania', 'Rondonia', brazil_deng
 # split df to list
 brazil_dengue_data_weekly <- split_tibble(brazil_dengue_data_weekly, 'Admin1Name')
 
+# malaria data ----------------------------------------------
+brazil_a <- read.csv('../data/malaria/brazil_amazonas_weekly.csv')
+brazil_b <- read.csv('../data/malaria/brazil_exoamazonas_weekly.csv')
+
+# combine data
+brazil_malaria_data_weekly <- rbind(brazil_a, brazil_b)
+brazil_malaria_data_weekly <- brazil_malaria_data_weekly %>%
+  filter(Year < 2020)
+
+# format state names
+brazil_malaria_data_weekly$Admin1Name <- iconv(brazil_malaria_data_weekly$Admin1Name, "latin1", "ASCII//TRANSLIT")
+brazil_malaria_data_weekly$Admin1Name <- str_to_title(brazil_malaria_data_weekly$Admin1Name)
+
+# fix specific names
+brazil_malaria_data_weekly$Admin1Name <- gsub('Esparito Santo', 'Espirito Santo', brazil_malaria_data_weekly$Admin1Name)
+brazil_malaria_data_weekly$Admin1Name <- gsub('Paraaba', 'Paraiba', brazil_malaria_data_weekly$Admin1Name)
+brazil_malaria_data_weekly$Admin1Name <- gsub('Piaua', 'Piaui', brazil_malaria_data_weekly$Admin1Name)
+brazil_malaria_data_weekly$Admin1Name <- gsub('Rondania', 'Rondonia', brazil_malaria_data_weekly$Admin1Name)
+brazil_malaria_data_weekly$Admin1Name <- gsub('Tocantis', 'Tocantins', brazil_malaria_data_weekly$Admin1Name)
+
+# split df to list
+brazil_malaria_data_weekly <- split_tibble(brazil_malaria_data_weekly, 'Admin1Name')
+

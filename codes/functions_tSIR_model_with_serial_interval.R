@@ -22,54 +22,69 @@ calculate_serial_interval_weights <- function(serial_interval_mean, serial_inter
   weights / sum(weights)  
 }
 
+# df = brazil_dengue_tsir_data[[15]]
+
 tsir_with_serial_interval <- function(df, weights){
-  cumulative_cases <- cumsum(df$cases)
-  cumulative_births <- cumsum(df$births)
+  # do this at the beginning
+  # calculate effective infectious individuals
+  Ieffective <- rep(NA, length(df$cases) - 5)
+
+  for(j in 1:length(Ieffective)){
+    Ieffective[j] <- sum(
+      df$cases[(j+4):j] * weights, na.rm=T
+    )
+  }
+  
+  cumulative_cases <- cumsum(Ieffective) # X
+  cumulative_births <- cumsum(df$births[6:length(df$births)]) # Y
   alpha_value <- 0.74
+  
+  # see what I'm trying to model 
+  # plot(cumulative_cases, cumulative_births, xlim = c(0,50000), ylim = c(0,50000))
   
   mod1 <- lm(cumulative_births ~ cumulative_cases)
   Yhat_cum_cases <- predict(mod1)
   
+  # see how the model fit looks
+  # plot(cumulative_cases, Yhat_cum_cases, xlim = c(0,50000), ylim = c(0,50000))
+  # abline(mod1)
+
   rho <- derivative(cumulative_cases, Yhat_cum_cases)
   
-  Zt <- resid(mod1) 
-  
-  # adjust infected class based on reporting rate, rho
-  Iadjusted <- df$cases + (rho * df$cases)
-  
-  # calculate effective infectious individuals
-  Ieffective <- rep(NA, length(Iadjusted - 5))
-  
-  for(j in 1:length(Ieffective)){
-    Ieffective[j] <- sum(
-      Iadjusted[(j+4):j] * weights, na.rm=T)
+  while(mean(rho) >= 1){
+    cumulative_births <- cumulative_births * 0.30
+    mod1 <- lm(cumulative_births ~ cumulative_cases)
+    Yhat_cum_cases <- predict(mod1)
+    rho <- derivative(cumulative_cases, Yhat_cum_cases)
   }
+  # signif(rho, 3)
+  # Zt <- resid(mod1)
+  Zt <- residual.cases(Yhat_cum_cases, cumulative_cases)
   
-  # period <- rep(1:(52/2), each = 2, round(nrow(df) + 1))[1:(nrow(df) - 5)]
-  # my change to get a beta for every week:
-  period <- seq(1, nrow(df) - 5, by = 1)
+  Iadjusted <- Ieffective + (rho * Ieffective)
+  
+  period <- seq(1, length(Ieffective)-1, by = 1)
   
   # since linear regression is includes St-1, offset variables appropriately
-  # may have too offset by 6 weeks because of serial interval
-  Iadjusted <- Iadjusted[6:length(df$cases)]
-  Iadjusted <- Iadjusted + 0.00001 # add a small amount so there are no true zeros
-  Ieffective <- Ieffective[6:length(df$cases)]
-  N <- df$pop[6:length(df$cases)]
-  Ztminus1 <- Zt[5:(length(df$cases)-1)]
-  alpha <- rep(alpha_value, length(df$cases)-5)
+  Iadjusted <- Iadjusted[1:length(Iadjusted)-1]
+  Iadjusted <- Iadjusted + 1 # add a small amount so there are no true zeros
+  Ieffective <- Ieffective[1:length(Ieffective)-1]
+  Ieffective <- Ieffective + 1 # add a small amount so there are no true zeros
+  N <- df$pop[7:length(df$cases)]
+  Ztminus1 <- Zt[2:length(Zt)]
+  alpha <- rep(alpha_value, length(Iadjusted))
   
   # set range for profile likelihood with Sbar
   # this is directly from tsiR package
-  min_S_bar <- max(0.01 * N, -(min(Ztminus1) - 1)) 
+  min_S_bar <- max(0.08 * N, - (min(Ztminus1) - 1)) # in tsiR package it's 0.01 instead of 0.08
   max_S_bar <- 0.4 * mean(N)
-  S_bar_gradient <-  seq(min_S_bar, max_S_bar, length = 250) # 250 is slow
+  S_bar_gradient <- seq(min_S_bar, max_S_bar, length = 5) # 250 is slow
   loglik <- rep(NA, length(S_bar_gradient))
   
   link <- "identity"
   family <- 'gaussian'
   
-  # If using offsets for "known" slopes (log(N) - end of equation), 
-  # betas are much smaller, it also reduces number of betas by 5 * 3 offsets
+  # Offsets used for "known" slopes 
   for (i in 1:length(S_bar_gradient)) {
     glmfit <- glm(
       log(Iadjusted) ~ -1 +
@@ -99,10 +114,55 @@ tsir_with_serial_interval <- function(df, weights){
     list(
       "Year" = df$time
       , "WOY" = df$WOY
-      , "S_ba" = S_bar
+      , "S_bar" = S_bar
+      , "S" = S_bar + Ztminus1
+      , "rho" = rho
       , "Ieffective" = Ieffective
       , "Iadjusted" = Iadjusted
       , "betas" = betas
     )
   )
+}
+
+# following Zika paper, but doesn't seem to work well with low case numbers from
+# Kenya
+simple_tsir_with_serial_interval <- function(df, weights){
+  Ieff <- rep(NA, length(df$cases) - 5)
+  
+  for(j in 1:length(Ieff)){
+    len <- length(df$cases)
+    
+    Ieff[j] <- sum(
+      df$cases[(j+4):j] * weights, na.rm=T
+    )
+  }
+  
+  I <- df$cases[6:len]
+  sumI <- cumsum(df$cases)
+  S <- unique(df$Population) - sumI[5:(len-1)]
+  
+  # cumulative_cases <- cumsum(Ieffective)
+  # cumulative_births <- cumsum(df$births[6:length(df$births)])
+  # alpha_value <- 0.74
+  
+  N <- rep(unique(df$Population), length.out = length(I))
+
+  # logged beta
+  betas <- ifelse(Ieff == 0,
+                  -Inf,
+                  log(I) - log(S) + log(N) - (.74) * log(Ieff))
+  
+  betas <- ifelse(is.infinite(betas), 0, betas)
+  
+  return(
+    list(
+      "Year" = df$Year
+      , "WOY" = df$WOY
+      , "S" = S
+      , "Ieffective" = Ieff
+      , "I" = I
+      , "betas" = betas
+    )
+  )
+
 }

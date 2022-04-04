@@ -9,6 +9,18 @@ R0_curves <- cbind(Aedes.R0.out, "anopheles.R0.median" = malaria / max(malaria))
 R0_curves$MalariaToDengueRatio <- R0_curves$anopheles.R0.median / R0_curves$aegypti.R0.median
 # R0_curves$MalariaToDengueRatio[is.nan(R0_curves$MalariaToDengueRatio)] <- 0
 
+# R0_curves$percent_change <- ifelse(R0_curves$aegypti.R0.median < R0_curves$anopheles.R0.median,
+#        -(R0_curves$aegypti.R0.median/R0_curves$anopheles.R0.median) * 100,
+#        (R0_curves$anopheles.R0.median/R0_curves$aegypti.R0.median) * 100)
+# plot(R0_curves$temperature,
+#      R0_curves$percent_change, 
+#      xlim = c(12, 37),
+#      lwd = 2, 
+#      type = "l", 
+#      col = "black", 
+#      xlab="", 
+#      ylab="")
+
 m = 0.2
 d = 0.4
 (m/d)

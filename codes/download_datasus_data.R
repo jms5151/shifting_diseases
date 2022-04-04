@@ -2,34 +2,55 @@
 # https://github.com/rfsaldanha/microdatasus/blob/master/R/process_sinan_malaria.R
 # devtools::install_github('rfsaldanha/microdatasus')
 
+# load libraries
+library('tidyverse')
 library('microdatasus')
+library('read.dbc')
+library('lubridate')
 
-# dados_brutos <- fetch_datasus(year_start = 2014
-#                               , year_end = 2014
-#                               , information_system = 'SIM-DO')
+# data from 2007-2017 can be automatically downloaded: 
+# malaria_df <- fetch_datasus(
+#   year_start = 2007
+#   , year_end = 2017
+#   , information_system = "SINAN-MALARIA-FINAL"
+#   )
 
-# 2007 might be first year and last year might be 2017
-malaria_df <- fetch_datasus(year_start = 2007
-                            # , month_start = 1
-                            , year_end = 2020
-                            # , month_end = 6
-                            # , uf = "RJ"
-                            , information_system = "SINAN-MALARIA-FINAL")
+# load data
+malaria_files <- list.files("../data/malaria/", full.names = T)
+malaria_files <- malaria_files[grep('MALABR', malaria_files)]
 
-df_a <- process_sinan_malaria(malaria_df
-                              , municipality_data = FALSE)
+malaria_datasus_df <- data.frame()
 
-sort(unique(df_a$DT_NOTIFIC)) # notification date
+for(i in malaria_files){
+  x <- read.dbc(i)
+  malaria_datasus_df <- rbind(malaria_datasus_df, x)
+}
 
-df_a$DT_NOTIFIC <- as.Date(df_a$DT_NOTIFIC, "%Y-%m-%d")
-df_a$Year_Month <- format(df_a$DT_NOTIFIC, '%Y-%m')
+# pre-process data
+malaria_datasus_df <- process_sinan_malaria(
+  malaria_datasus_df
+  , municipality_data = FALSE
+  )
 
-library(tidyverse)
+# format data
+malaria_datasus_df$DT_NOTIFIC <- as.Date(malaria_datasus_df$DT_NOTIFIC, "%Y-%m-%d")
+malaria_datasus_df$Year <- format(malaria_datasus_df$DT_NOTIFIC, '%Y')
+malaria_datasus_df$WOY <- week(malaria_datasus_df$DT_NOTIFIC)
 
-df_b <- df_a %>%
-  group_by(Year_Month, ID_MUNICIP) %>%
-  summarise(cases = length(TP_NOT))
+malaria_datasus_df <- malaria_datasus_df %>%
+  group_by(Year, WOY, SG_UF_NOT, RESULT) %>% # other option is SG_UF, residence rather than notification?
+  summarise(cases = length(RESULT)) %>%
+  spread(key = RESULT, cases)%>%
+  mutate('Admin1Name' = SG_UF_NOT
+         , 'P_falciparum' = F
+         , 'P_vivax' = V)
 
-test <- subset(df_b, ID_MUNICIP == '330455')
-plot.ts(test$cases)
+malaria_datasus_df <- malaria_datasus_df[,c('Year'
+                                            , 'WOY'
+                                            , 'P_falciparum'
+                                            , 'P_vivax'
+                                            , 'Admin1Name')]
+
+# save
+write.csv(malaria_datasus_df, '../data/malaria/brazil_exoamazonas_weekly.csv', row.names = F)
 

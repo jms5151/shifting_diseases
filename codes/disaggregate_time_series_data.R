@@ -4,9 +4,10 @@ library(tidyverse)
 # source temporal disaggration function
 source("codes/functions_temporal_disaggregation.R")
 
+# dengue -----------------------------------------------------------------------
 # load files
 dengue_files <- list.files('../data/dengue/', full.names = TRUE)
-dengue_files_to_use <- dengue_files[grepl('THAILAND|brazil', dengue_files)]
+dengue_files_to_use <- dengue_files[grepl('THAILAND|brazil|kenya', dengue_files)]
 # after this code has been run at least once, this is needed
 dengue_files_to_use <- dengue_files_to_use[!grepl('weekly', dengue_files_to_use)]
 
@@ -25,6 +26,12 @@ for(i in 1:length(dengue_files_to_use)){
       summarise(CountValue = sum(dengue_cases)) %>%
       filter(!is.na(CountValue))
     x <- as.data.frame(x)
+  }
+  # --------------------------------------------
+  if(dengue_files_to_use[i] == '../data/dengue/kenya_r01_arbovirus_data.csv'){
+    x$PeriodStartDate <- paste0(x$YearMonth, '-01')
+    x$Admin1Name <- x$Site
+    x$CountValue <- x$arboviruses_positive
   }
   # --------------------------------------------
   # format date
