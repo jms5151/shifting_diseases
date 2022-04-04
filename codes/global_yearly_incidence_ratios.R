@@ -96,6 +96,7 @@ mbd_lagged <- mbd %>%
   group_by(Location, Period) %>%
   mutate(ratio_lagged = lag(ratio))
 
+
 # Periodograms -----------------------------------------------------------------
 # malaria
 malaria_dfs <- read.csv('../data/malaria/malaria_estimated_total_cases_global.csv')
