@@ -51,64 +51,25 @@ aggregate_vectors <- function(df, location){
   df
 }
 
-# write loop to go through data vector genus, country, and state ---------------
-vectors <- list(aedes, anopheles)
-vector_names <- c('Aedes', 'Anopheles')
-location_names <- c('country', 'state')
 
-for(i in 1:length(vectors)){
-  for(j in 1:length(location_names)){
-    
-    # aggregate/summarize vector data by location and time
-    vector_df <- aggregate_vectors(
-      df = vectors[[i]]
-      , location = location_names[[j]]
-      )
+# aedes -----------------------------------------
+ae_vec <- aggregate_vectors(df = aedes
+                            , location = 'country'
+                            # , location = 'state'
+                            )
 
-    # subset highly sampled data
-    highlySampledLocations <- names(which(table(vector_df$Location) > 100))
-    vector_df <- vector_df[vector_df$Location %in% highlySampledLocations, ]
-    
-    # for each highly sampled location
-    for(k in highlySampledLocations){
-      
-      # subset data
-      vector_df_sub <- subset(vector_df, Location == k)
-      
-      # create heatmap of time series data
-      vector_heatmap <- ggplot(vector_df_sub, aes(YearMonth, Location, fill = normalized_count)) + 
-        geom_tile() +
-        theme_bw() +
-        xlab('Year-Month') +
-        ylab('') +
-        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-        ggtitle(vector_names[i])
-      
-    }
-    
-    
-    
-  }
-}
+ae_highlySampledLocations <- names(which(table(ae_vec$Location) > 100))
 
-# # aedes -----------------------------------------
-# ae_vec <- aggregate_vectors(df = aedes
-#                             , location = 'country'
-#                             # , location = 'state'
-#                             )
-# 
-# ae_highlySampledLocations <- names(which(table(ae_vec$Location) > 100))
-# 
-# ae_vec <- ae_vec[ae_vec$Location %in% ae_highlySampledLocations, ]
-# 
-# # anopheles -------------------------------------
-# an_vec <- aggregate_vectors(df = anopheles
-#                             , location = 'country'
-#                             # , location = 'state'
-#                             )
-# an_highlySampledLocations <- names(which(table(an_vec$Location) > 100))
-# 
-# an_vec <- an_vec[an_vec$Location %in% an_highlySampledLocations, ]
+ae_vec <- ae_vec[ae_vec$Location %in% ae_highlySampledLocations, ]
+
+# anopheles -------------------------------------
+an_vec <- aggregate_vectors(df = anopheles
+                            , location = 'country'
+                            # , location = 'state'
+                            )
+an_highlySampledLocations <- names(which(table(an_vec$Location) > 100))
+
+an_vec <- an_vec[an_vec$Location %in% an_highlySampledLocations, ]
 
 # an_vec <- an_vec %>%
 #   # Anopheles, top countries
