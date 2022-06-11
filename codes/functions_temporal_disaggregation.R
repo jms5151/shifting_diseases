@@ -6,6 +6,8 @@ library(tidyverse)
 library(lubridate)
 library(tempdisagg)
 library(tsbox)
+library(stringr)
+library(ISOweek)
 
 format_for_temp_disagg <- function(df, dateCol){
   # remove duplicated data
@@ -59,15 +61,20 @@ monthly_to_weekly_disagg <- function(dfMonthly, dateCol, casesCol){
   # format data
   df$Year <- format(df$Date, "%Y")
   df$WOY <- week(df$Date)
-  df$cases[df$cases < 0] <- 0
   
-  # aggregate daily data to weekly values based on year 
-  # and week of year (WOY)
+  # add date back in
+  df$Date <- str_pad(df$WOY, 2, pad = '0')
+  df$Date <- paste0(df$Year, '-W', df$Date, '-7')
+  df$Date <- ISOweek::ISOweek2date(df$Date)
+  
+  # aggregate daily data to weekly values based on year and week of year (WOY)
   df2 <- df %>%
-    group_by(Year, WOY) %>%
+    group_by(Date) %>% #Year, WOY
     summarise(cases = sum(cases))
+
+  df2$cases[df2$cases < 0] <- 0
   
   # return weekly cases dataframe
-  df2
+  as.data.frame(df2)
 }
 
