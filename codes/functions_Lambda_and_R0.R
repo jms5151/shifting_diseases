@@ -1,3 +1,5 @@
+library(zoo)
+
 # Regress I(t) on I(t-1) over a moving window of length x  ---------------------
 lambda_fun <- function(x) { 
   x1 = x[2:length(x)]
@@ -54,39 +56,43 @@ calc_ts_R0 <- function(df, disease){
   
   for(i in num_outbreaks){
     df_tmp <- subset(df, outbreak == 'yes' & period == i)
-    outbreak_dates <- df_tmp$Date
-    # this is causing problems in some cases, may want to adjust dynamically
-    outbreak_begin_date <- min(outbreak_dates)
-    outbreak_incidence <- df_tmp$cases
-    
-    if(sum(outbreak_incidence) >= 150){ 
+    if(nrow(df_tmp) >= 3){
+      outbreak_dates <- df_tmp$Date
+      # this is causing problems in some cases, may want to adjust dynamically
+      outbreak_begin_date <- min(outbreak_dates)
+      outbreak_end_date <- max(outbreak_dates)
+      outbreak_incidence <- df_tmp$cases
       
-      tmp_row_vals <- c(i, NA, NA, NA)
-      
-      tryCatch(
+      if(sum(outbreak_incidence) >= 150){ 
         
-        expr = {
-          R0_out <- est.R0.ML(
-            epid = as.integer(outbreak_incidence)
-            , GT = gen_time
-            , t = outbreak_dates
-            , date.first.obs = outbreak_begin_date
-            , time.step = 7 # number of days between each incidence observation (although suspicious that ts length needs to be more than 8)
-          )
+        tmp_row_vals <- c(i, NA, NA, NA)
+        
+        tryCatch(
           
-          tmp_row_vals <- c(i, R0_out$R, R0_out$conf.int[1], R0_out$conf.int[2])
+          expr = {
+            R0_out <- est.R0.ML(
+              epid = as.integer(outbreak_incidence)
+              , GT = gen_time
+              , t = outbreak_dates
+              # , date.first.obs = outbreak_begin_date
+              , begin = outbreak_begin_date
+              , end = outbreak_end_date
+              , time.step = 7#round(as.numeric(min(diff(sort(outbreak_dates))))) # number of days between each incidence observation (although suspicious that ts length needs to be more than 8)
+            )
+            
+            tmp_row_vals <- c(i, R0_out$R, R0_out$conf.int[1], R0_out$conf.int[2])
+            
+          }, 
           
-        }, 
-        
-        error = function(e){
-          cat(i, "ERROR :", conditionMessage(e), "\n")
-        },
-        
-        finally = {R0_df[i,] <- tmp_row_vals}
-      )
-      
+          error = function(e){
+            cat(i, "ERROR :", conditionMessage(e), "\n")
+          },
+          
+          finally = {R0_df[i,] <- tmp_row_vals}
+        )
+        }
+      }
     }
-  }
   # return dataframe
   R0_df
 }
@@ -203,7 +209,7 @@ summarise_outbreaks <- function(df, cases_colname, date_colname, disease){
     summarise(
       total_cases = sum(cases)
       , peak_cases = max(cases)
-      , peak_date = date[cases == peak_cases]
+      , outbreak_peak = mean(date[cases == peak_cases]) # take mean in case of ties
       , outbreak_start = min(date)
       , outbreak_end = max(date)
       , susceptibility_index = mean(susceptibility_index, na.rm = T)
@@ -212,28 +218,34 @@ summarise_outbreaks <- function(df, cases_colname, date_colname, disease){
     ) %>%
     left_join(interoutbreak_summary) %>%
     left_join(r0) %>%
-    mutate(Year = format(peak_date, '%Y')
-           , peak_month = format(peak_date, '%m')
-           , start_month = format(outbreak_start, '%m')
-           , end_month = format(outbreak_end, '%m')
+    mutate(Year = format(outbreak_peak, '%Y')
+           # , peak_week = format(outbreak_peak, '%W')
+           # , start_week = format(outbreak_start, '%W')
+           # , end_week = format(outbreak_end, '%W')
            )
   
-  outbreak_summary$duration_btwn_peaks <- difftime(outbreak_summary$peak_date, lag(outbreak_summary$peak_date))
+  outbreak_summary$duration_btwn_peaks <- difftime(outbreak_summary$outbreak_peak, lag(outbreak_summary$outbreak_peak))
+  
+  outbreak_summary <- as.data.frame(outbreak_summary)
   
   # return from function
   return(outbreak_summary)
   
 }
 
+# may want to change year to yearx = year - start_year to compare across datasets
+# or just rename as 1...N years
 ## Summarise trends in data
 slope_and_pval_function <- function(df, xvar, yvar){
   df <- as.data.frame(df)
+  
+  xvar <- seq(from = 1, to = length(df[, xvar]), by = 1)
 
-  if(is.numeric(xvar) == FALSE) {
-    xvar <- as.numeric(df[, xvar])
-  } else {
-    xvar <- df[, xvar]
-  }
+  # if(is.numeric(xvar) == FALSE) {
+  #   xvar <- as.numeric(df[, xvar])
+  # } else {
+  #   xvar <- df[, xvar]
+  # }
   
   if(is.numeric(yvar) == FALSE) {
     yvar <- as.numeric(df[, yvar])
@@ -253,6 +265,12 @@ slope_and_pval_function <- function(df, xvar, yvar){
   )
 }
 
+time_shift_calc <- function(date_vec){
+  date_vec_lagged <- date_vec[1:(length(date_vec)-1)]
+  date_vec_updated <- date_vec[2:length(date_vec)]
+  diff_vec <- difftime(date_vec_updated, date_vec_lagged, units = 'weeks') - 53 # 53 = weeks in year
+  data.frame('Date' = date_vec_updated, 'Time_shift' = diff_vec)
+}
 
 summarise_trends <- function(df){
   
@@ -272,7 +290,22 @@ summarise_trends <- function(df){
   outbreak_frequency <- round(length(df$period) / (max(as.numeric(df$Year)) - min(as.numeric(df$Year))), 2)
   names(outbreak_frequency) <- 'Outbreak_frequency'
   
-  # output
-  c(r0, out_dur, dur_peaks, outbreak_frequency)
+  # Estimate annual shifts in outbreak onset and peak, use only largest outbreak/year
+  df_annual_outbreaks <- df %>%
+    group_by(Year) %>%
+    slice_max(total_cases)
+  
+  # Shift in outbreak onset vs year
+  start_time_df <- time_shift_calc(date_vec = df_annual_outbreaks$outbreak_start)
+  onset <- slope_and_pval_function(df = start_time_df, xvar = 'Date', yvar = 'Time_shift')
+  names(onset) <- paste0('Annual_shift_in_start_week_', names(onset))
 
+  # Shift in outbreak onset vs year
+  peak_time_df <- time_shift_calc(date_vec = df_annual_outbreaks$outbreak_peak)
+  peak <- slope_and_pval_function(df = peak_time_df, xvar = 'Date', yvar = 'Time_shift')
+  names(peak) <- paste0('Annual_shift_in_peak_week_', names(peak))
+  
+  # output
+  as.data.frame(c(r0, out_dur, dur_peaks, outbreak_frequency, onset, peak))
+  
 }
