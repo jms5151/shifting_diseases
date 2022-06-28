@@ -5,60 +5,87 @@ source('codes/functions_tibble_to_list.R')
 source('codes/functions_fix_special_characters.R')
 source('codes/functions_Lambda_and_R0.R')
 
-# library(CircStats) # https://stackoverflow.com/questions/32404222/circular-mean-in-r
+# BRAZIL ONLY ------------------------------------------------------------
+summarize_outbreaks <- function(df, casesCol){
+  # fix spelling issues associated with translation
+  df$Admin_unit <- replace_spanish_characters(x = df$Admin_unit)
+  
+  # split data to list
+  df_list <- split_tibble(df, 'Admin_unit')
+  
+  # determine disease
+  if(casesCol == 'Dengue_cases'){
+    diseaseName = 'dengue'
+  } else {
+    diseaseName = 'malaria'
+  }
+  
+  # calculate outbreak information for each location
+  df_summary <- lapply(
+    df_list
+    , function(x)
+      summarise_outbreaks(
+        df = x
+        , cases_colname = casesCol
+        , date_colname = 'Date'
+        , disease = diseaseName
+      )
+  )
+  
+  # Remove null dataframes from list, function from tidyverse
+  df_summary <- compact(df_summary)
+
+  # Add admin unit names
+  df_summary <- Map(cbind, df_summary, 'Admin_unit' = names(df_summary))
+  
+  # return 
+  df_summary
+  
+}
+
+summarize_trends <- function(df){
+  # calculate trends through time by location
+  df2 <- lapply(
+    df
+    , function(x)
+      summarise_trends(df = x)
+  )
+  
+  # Add admin unit names
+  df2 <- Map(cbind, df2, 'Admin_unit' = names(df2))
+  
+  # rbind data
+  df2_long <- do.call('rbind', df2)
+  
+  # return
+  df2_long
+}
 
 # Dengue data ------------------------------------------------------------------
 # load data
 brazil_dengue <- read.csv('../data/dengue/Lowe_etal_LPH_2021_brazil_dengue_data_2000_2019_weekly.csv')
 
 # format data
-brazil_dengue <- brazil_dengue %>%
-  mutate(Country = 'Brazil'
-         , 'Admin_unit' = Admin1Name
-         , 'Date' = ISOweek2date(paste0(Year, '-W', sprintf('%02d', WOY), "-1"))
-  ) %>%
-  # mutate(Country = 'Brazil'
-  #        , 'Admin_unit' = state_name
-  #        , 'Date' = as.Date(paste0(year, '-', month, "-01"), '%Y-%m-%d')
-  # ) %>%
-  group_by(Country, Admin_unit, Date) %>%
-  summarise(Dengue_cases = sum(cases, na.rm = T)
-  # summarise(Dengue_cases = sum(dengue_cases, na.rm = T)
-  ) %>%
-  as.data.frame()
+# brazil_dengue <- brazil_dengue %>%
+#   mutate(Country = 'Brazil'
+#          , 'Admin_unit' = Admin1Name
+#          , 'Date' = ISOweek2date(paste0(Year, '-W', sprintf('%02d', WOY), "-1"))
+#   ) %>%
+#   group_by(Country, Admin_unit, Date) %>%
+#   summarise(Dengue_cases = sum(cases, na.rm = T)
+#   ) %>%
+#   as.data.frame()
 
-# fix spelling issues associated with translation
-brazil_dengue$Admin_unit <- replace_spanish_characters(x = brazil_dengue$Admin_unit)
+# outbreak summary
+brazil_dengue_outbreaks_summary <- summarize_outbreaks(
+  df = brazil_dengue
+  # , casesCol = 'Dengue_cases'
+  , casesCol = 'cases'
+  
+)
 
-# split data to list
-brazil_dengue <- split_tibble(brazil_dengue, 'Admin_unit')
-
-# calculate outbreak information for each location
-brazil_dengue_outbreaks_summary <- lapply(
-  brazil_dengue
-  , function(x)
-    summarise_outbreaks(
-      df = x
-      , cases_colname = 'Dengue_cases'
-      , date_colname = 'Date'
-      , disease = 'dengue'
-    )
-  )
-
-# Add admin unit names
-brazil_dengue_outbreaks_summary <- Map(cbind, brazil_dengue_outbreaks_summary, 'Admin_unit' = names(brazil_dengue_outbreaks_summary))
-
-# calculate trends through time by location
-brazil_dengue_trends_summary <- lapply(
-  brazil_dengue_outbreaks_summary
-  , function(x)
-    summarise_trends(df = x)
-  )
-
-# Add admin unit names
-brazil_dengue_trends_summary <- Map(cbind, brazil_dengue_trends_summary, 'Admin_unit' = names(brazil_dengue_trends_summary))
-
-brazil_dengue_trends_summary_long <- do.call('rbind', brazil_dengue_trends_summary)
+# trends
+brazil_dengue_trends_long <- summarize_trends(df = brazil_dengue_outbreaks_summary)
 
 # Malaria data -----------------------------------------------------------------
 brazil_malaria_1 <- read.csv('../data/malaria/brazil_exoamazonas_weekly.csv')
@@ -72,34 +99,29 @@ brazil_malaria <- brazil_malaria_1 %>%
          ) %>%
   group_by(Country, Admin_unit, Date) %>%
   summarise(Falciparum_cases = sum(P_falciparum, na.rm = T)
-            , Vivax_cases = sum(P_falciparum, na.rm = T)
+            , Vivax_cases = sum(P_vivax, na.rm = T)
             ) %>%
   as.data.frame()
 
-brazil_malaria$Admin_unit <- replace_spanish_characters(x = brazil_malaria$Admin_unit)
+# P. falciparum  ----------------------
+# outbreak summary
+brazil_pfal_outbreaks_summary <- summarize_outbreaks(
+  df = brazil_malaria
+  , casesCol = 'Falciparum_cases'
+)
 
-# # need to add malaria serial interval, but also very small number of cases
-# # so might not work in this location anyway
-# n <- 43
-# ci <- c(1,6)
-# # Take the middle of the CI to get x_bar (3.5).
-# x_bar <- mean(ci)
-# # Use 1 = x_bar - 1.96 * sd/sqrt(n)
-# S2 <- n^2 * (x_bar - ci[1])/1.96
+# trends
+brazil_pfal_trends_long <- summarize_trends(df = brazil_pfal_outbreaks_summary)
 
-# falciparum_outbreaks_summary <- summarise_outbreaks(
-#     df = SP_malaria
-#     , cases_colname = 'Falciparum_cases'
-#     , date_colname = 'Date'
-#     , disease = 'malaria'
-#   )
-# 
-# vivax_outbreaks_summary <- summarise_outbreaks(
-#   df = SP_malaria
-#   , cases_colname = 'Vivax_cases'
-#   , date_colname = 'Date'
-#   , disease = 'malaria'
+# P. vivax  --------------------------
+# outbreak summary
+# brazil_pvax_outbreaks_summary <- summarize_outbreaks(
+#   df = brazil_malaria
+#   , casesCol = 'Vivax_cases'
 # )
+# 
+# # trends
+# brazil_pvax_trends_long <- summarize_trends(df = brazil_pvax_outbreaks_summary)
 
 # ESM climate data -------------------------------------------------------------
 normal_land_grid <- read.csv('../data/esm/t_ref.land_daily.AM4_urban.amip1870_urban_luh2_wasteCool_tigercpu_intelmpi_18_576PE.Brazil.subregion.ens00.1999-2020.deg_k.csv')
@@ -287,6 +309,8 @@ ggsave('../figures/regression_models/dengue.pdf', width = 12, height = 3)
 # plot(br_dengue_simres)
 
 # histograms of trends ---------------------------------------------------------
+brazil_dengue_trends_summary_long <- summarise_trends(df = outbreaks_summary)
+
 slope_cols <- colnames(brazil_dengue_trends_summary_long)[grep('slope$', colnames(brazil_dengue_trends_summary_long))]
 
 trends <- brazil_dengue_trends_summary_long[, slope_cols] %>%
@@ -300,7 +324,9 @@ trends_plot <- ggplot(trends, aes(x = Slope)) +
   facet_wrap(.~Trend, scales = 'free') + 
   theme_classic() +
   ggtitle('Dengue trends in Brazil'
-          , subtitle = 'N = 27 states (slopes from 19 years of data/state)')
+          , subtitle = 'N = 27 states (slopes from 19 years of data/state)') +
+  xlab('') +
+  ylab('')
 
 ggsave('../figures/trends/dengue_trends.pdf', width = 8.5, height = 6)
 
@@ -308,3 +334,51 @@ ggsave('../figures/trends/dengue_trends.pdf', width = 8.5, height = 6)
 # 'predicted' vs 'observed' R0 with uncertainty in X and Y directions
 # one plot for each ESM = 3 plots for dengue, 3 for malaria, 3 for ratio
 # If time, plot R0 curves (with new R0 or relative R0?) vs data 
+
+# ------------------------------------------------------------------------------
+# All dengue data --------------------------------------------------------------
+# ------------------------------------------------------------------------------
+source('../codes/format_data_for_lambda_R0_analyses.R')
+
+outbreaks_summary <- lapply(dengue_data, function(x)
+  summarise_outbreaks(
+    df = x
+    , cases_colname = 'Dengue_cases'
+    , date_colname = 'Date'
+    , disease = 'dengue'
+  )
+)
+
+# Remove NULL data frames within list 
+outbreaks_summary <- outbreaks_summary[!sapply(outbreaks_summary, is.null)]
+
+# Remove data frames with rows but no data
+outbreaks_summary <- outbreaks_summary[sapply(outbreaks_summary, nrow)>0]
+
+
+outbreaks_trends <- lapply(outbreaks_summary, function(x)
+  summarise_trends(df = x)
+)
+
+outbreaks_trends_long <- do.call('rbind', outbreaks_trends)
+
+# histograms
+slope_cols <- colnames(outbreaks_trends_long)[grep('slope$', colnames(outbreaks_trends_long))]
+
+trends <- outbreaks_trends_long[, slope_cols] %>%
+  gather('key' = 'Trend', 'value' = 'Slope')
+
+trends$Trend <- gsub('_', ' ', trends$Trend)
+
+trends_plot <- ggplot(trends, aes(x = Slope)) +
+  geom_histogram(fill = "#69b3a2", color = "#e9ecef", alpha = 0.9) +
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  facet_wrap(.~Trend, scales = 'free') + 
+  theme_classic() +
+  ggtitle('Dengue trends'
+          , subtitle = paste0('N = ', nrow(trends), ' administration units')
+  )+
+  xlab('') +
+  ylab('')
+
+ggsave('../figures/trends/dengue_trends.pdf', width = 9.5, height = 6)

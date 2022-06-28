@@ -44,6 +44,7 @@ monthly_to_weekly_disagg <- function(dfMonthly, dateCol, casesCol){
   for(i in 1:nrow(dfMonthly)){
     # calculate number of days in given month with data
     daysInMonth <- as.numeric(lubridate::days_in_month(dfMonthly[[i, dateCol]]))
+
     # dissaggregate to daily data
     sj_disagg <- td(dfMonthly[[i, casesCol]] ~ 1, 
                     conversion = "sum",

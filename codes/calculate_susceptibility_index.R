@@ -9,7 +9,6 @@ library(ggplot2)
 
 # could source or save and read in 
 source('codes/format_data_for_lambda_R0_analyses.R')
-
 source('codes/functions_Lambda_and_R0.R')
 
 # Doesn't seem like the results differ if using weekly disaggregated or monthly data
@@ -172,22 +171,3 @@ xx <- trends_summary[['SÃ£o Paulo']] %>% as.data.frame()
 # 
 
 ### Call format data for lambda R0 analyses ------------------------------------
-outbreaks_summary <- lapply(dengue_data, function(x)
-  summarise_outbreaks(
-    df = x
-    , cases_colname = 'Dengue_cases'
-    , date_colname = 'Date'
-    , disease = 'dengue'
-  )
-)
-
-sp <- subset(colombia_dengue, Admin_unit == 'Bolivar')
-
-test <- summarise_outbreaks(
-  df = sp
-  , cases_colname = 'Dengue_cases'
-  , date_colname = 'Date'
-  , disease = 'dengue'
-)
-
-TEST2 <- summarise_trends(df = TEST)

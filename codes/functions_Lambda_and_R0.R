@@ -41,14 +41,20 @@ calc_ts_R0 <- function(df, disease){
   
   # may want to do a sensitivity analysis for these  
   if(disease == 'dengue'){
-    dengue_serial_interval_mean_wks = 16.5/7
-    dengue_serial_interval_sd_wks = 5/7
-    gen_time <- generation.time("gamma", c(dengue_serial_interval_mean_wks, dengue_serial_interval_sd_wks))
+    # serial interval
+    mean_wks = 16.5/7
+    sd_wks = 5/7
   } else if(disease == 'malaria'){
-    # malaria_serial_interval_mean_wks = 16.5/7
-    # malaria_serial_interval_sd_wks = 5/7
-    # gen_time <- generation.time("gamma", c(malaria_serial_interval_mean_wks, malaria_serial_interval_sd_wks))
+    # generation interval for treated infections with P. falciparum
+    # https://malariajournal.biomedcentral.com/articles/10.1186/s12936-016-1537-6#Sec2
+    mean_wks = 49.1/7
+    upper_ci = 68
+    lower_ci = 35
+    n = 1000
+    malaria_sd <- (upper_ci - lower_ci)*sqrt(n)/1.96
+    sd_wks = malaria_sd/7
   }
+  gen_time <- generation.time("gamma", c(mean_wks, sd_wks))
   
   # may want df to include site name, year (or date range)
   R0_df <- data.frame(matrix(ncol = 4, nrow = 0))
@@ -104,6 +110,9 @@ summarise_outbreaks <- function(df, cases_colname, date_colname, disease){
   
   df$cases <- df[, cases_colname]
   df$date <- df[, date_colname]
+  df$date <- as.Date(df$date, '%Y-%m-%d')
+  
+  df <- df[order(df$date), ]
   
   # calculate lambda
   df$lambda <- rollapply(
@@ -113,7 +122,7 @@ summarise_outbreaks <- function(df, cases_colname, date_colname, disease){
     , fill = NA
     , FUN = lambda_fun
     , by.column = FALSE
-    , align="right"
+    , align = "right"
     )
   
   # calculate smoothed lambda
@@ -124,7 +133,7 @@ summarise_outbreaks <- function(df, cases_colname, date_colname, disease){
     , fill = NA
     , FUN = mean
     , by.column = FALSE
-    , align="right"
+    , align = "right"
     )
   
   # determine outbreak periods
@@ -135,101 +144,105 @@ summarise_outbreaks <- function(df, cases_colname, date_colname, disease){
     , fill = NA
     , FUN = outbreak_start_fun
     , by.column = FALSE
-    , align="right"
+    , align = "right"
     )
   
   # outbreak designation
   df$outbreak  <- ifelse(df$lambda_smoothed < 1, 'no', 'yes')
   
-  # label events
-  outbreak_n = 0
-  interoutbreak_n = 0
-  df$period <- NA
-  start_row <- which(!is.na(df$onset) == TRUE)[1]
-  
-  for(i in start_row:nrow(df)){
-    # if an outbreak or inter-outbreak period has started
-    if(!is.na(df$outbreak[i]) & !is.na(df$onset[i])){
-      # if it's a new outbreak period, update outbreak n value 
-      if(df$outbreak[i] == 'yes' & df$onset[i] == 'outbreak_onset'){
-        outbreak_n = outbreak_n + 1
-        # else if it's a new inter-outbreak period, update inter-outbreak n value 
-      } else if(df$outbreak[i] == 'no' & df$onset[i] == 'inter-outbreak_onset'){
-        interoutbreak_n = interoutbreak_n + 1
+  # If there were outbreaks, continue calculations
+  if(any(df$outbreak == 'yes', na.rm = T) == TRUE){
+    # label events
+    outbreak_n = 0
+    interoutbreak_n = 0
+    df$period <- NA
+    start_row <- which(!is.na(df$onset) == TRUE)[1]
+    
+    for(i in start_row:nrow(df)){
+      # if an outbreak or inter-outbreak period has started
+      if(!is.na(df$outbreak[i]) & !is.na(df$onset[i])){
+        # if it's a new outbreak period, update outbreak n value 
+        if(df$outbreak[i] == 'yes' & df$onset[i] == 'outbreak_onset'){
+          outbreak_n = outbreak_n + 1
+          # else if it's a new inter-outbreak period, update inter-outbreak n value 
+        } else if(df$outbreak[i] == 'no' & df$onset[i] == 'inter-outbreak_onset'){
+          interoutbreak_n = interoutbreak_n + 1
+        }
+      }
+      # label outbreak/inter-outbreaks
+      if(outbreak_n > 0 | interoutbreak_n > 0){
+        df$period[i] <- ifelse(df$outbreak[i] == 'yes', outbreak_n, interoutbreak_n)
       }
     }
-    # label outbreak/inter-outbreaks
-    if(outbreak_n > 0 | interoutbreak_n > 0){
-      df$period[i] <- ifelse(df$outbreak[i] == 'yes', outbreak_n, interoutbreak_n)
-    }
+    
+    # Calculate smoothed weekly lambda values based on 12-week moving window, 12 weeks prior 
+    df$susceptibility_index <- rollapply(
+      df$lambda
+      # width = 32 weeks better, but need 16 in susceptibility_index_fun
+      , width = 25 # to have 12 weeks of data; 24?;
+      , by = 1
+      , fill = NA
+      , FUN = susceptibility_index_fun
+      , by.column = FALSE
+      , align="right"
+    )
+    
+    df$susceptibility_index_var <- rollapply(
+      df$lambda
+      # width = 32 weeks better, but need 16 in susceptibility_index_fun
+      , width = 25 # to have 12 weeks of data; 24?;
+      , by = 1
+      , fill = NA
+      , FUN = susceptibility_index_var_fun
+      , by.column = FALSE
+      , align="right"
+    )
+    
+    df$susceptibility_index <- ifelse(!is.na(df$onset), df$susceptibility_index, NA)
+    df$susceptibility_index_var <- ifelse(!is.na(df$onset), df$susceptibility_index_var, NA)
+    
+    # Estimate R0 by max likelihood
+    
+    r0 <- calc_ts_R0(
+      df = df
+      , disease = disease
+    )
+    
+    # summarize data
+    interoutbreak_summary <- df %>%
+      filter(outbreak == 'no' & !is.na(period)) %>%
+      group_by(period) %>%
+      summarise(interoutbreak_duration = difftime(max(date), min(date), unit = 'days'))
+    
+    outbreak_summary <- df %>%
+      filter(outbreak == 'yes' & !is.na(period)) %>%
+      group_by(period) %>%
+      summarise(
+        total_cases = sum(cases)
+        , peak_cases = max(cases)
+        , outbreak_peak = date[cases == peak_cases][1] # take first date in case of ties
+        , outbreak_start = min(date)
+        , outbreak_end = max(date)
+        , susceptibility_index = mean(susceptibility_index, na.rm = T)
+        , susceptibility_index_var = mean(susceptibility_index_var, na.rm = T)
+        , outbreak_duration = difftime(outbreak_end, outbreak_start, unit = 'days')
+      ) %>%
+      left_join(interoutbreak_summary) %>%
+      left_join(r0) %>%
+      mutate(Year = format(outbreak_peak, '%Y') # as.numeric(substr(outbreak_peak, 1, 4))
+             # , peak_week = format(outbreak_peak, '%W')
+             # , start_week = format(outbreak_start, '%W')
+             # , end_week = format(outbreak_end, '%W')
+      )
+    
+    outbreak_summary$duration_btwn_peaks <- difftime(outbreak_summary$outbreak_peak, lag(outbreak_summary$outbreak_peak))
+    
+    outbreak_summary <- as.data.frame(outbreak_summary)
+    
+    # return from function
+    return(outbreak_summary)
+    
   }
-  
-  # Calculate smoothed weekly lambda values based on 12-week moving window, 12 weeks prior 
-  df$susceptibility_index <- rollapply(
-    df$lambda
-    # width = 32 weeks better, but need 16 in susceptibility_index_fun
-    , width = 25 # to have 12 weeks of data; 24?;
-    , by = 1
-    , fill = NA
-    , FUN = susceptibility_index_fun
-    , by.column = FALSE
-    , align="right"
-    )
-  
-  df$susceptibility_index_var <- rollapply(
-    df$lambda
-    # width = 32 weeks better, but need 16 in susceptibility_index_fun
-    , width = 25 # to have 12 weeks of data; 24?;
-    , by = 1
-    , fill = NA
-    , FUN = susceptibility_index_var_fun
-    , by.column = FALSE
-    , align="right"
-    )
-  
-  df$susceptibility_index <- ifelse(!is.na(df$onset), df$susceptibility_index, NA)
-  df$susceptibility_index_var <- ifelse(!is.na(df$onset), df$susceptibility_index_var, NA)
-  
-  # Estimate R0 by max likelihood
-  
-  r0 <- calc_ts_R0(
-    df = df
-    , disease = disease
-    )
-  
-  # summarize data
-  interoutbreak_summary <- df %>%
-    filter(outbreak == 'no' & !is.na(period)) %>%
-    group_by(period) %>%
-    summarise(interoutbreak_duration = difftime(max(date), min(date), unit = 'days'))
-  
-  outbreak_summary <- df %>%
-    filter(outbreak == 'yes' & !is.na(period)) %>%
-    group_by(period) %>%
-    summarise(
-      total_cases = sum(cases)
-      , peak_cases = max(cases)
-      , outbreak_peak = mean(date[cases == peak_cases]) # take mean in case of ties
-      , outbreak_start = min(date)
-      , outbreak_end = max(date)
-      , susceptibility_index = mean(susceptibility_index, na.rm = T)
-      , susceptibility_index_var = mean(susceptibility_index_var, na.rm = T)
-      , outbreak_duration = difftime(outbreak_end, outbreak_start, unit = 'days')
-    ) %>%
-    left_join(interoutbreak_summary) %>%
-    left_join(r0) %>%
-    mutate(Year = format(outbreak_peak, '%Y')
-           # , peak_week = format(outbreak_peak, '%W')
-           # , start_week = format(outbreak_start, '%W')
-           # , end_week = format(outbreak_end, '%W')
-           )
-  
-  outbreak_summary$duration_btwn_peaks <- difftime(outbreak_summary$outbreak_peak, lag(outbreak_summary$outbreak_peak))
-  
-  outbreak_summary <- as.data.frame(outbreak_summary)
-  
-  # return from function
-  return(outbreak_summary)
   
 }
 
@@ -237,32 +250,35 @@ summarise_outbreaks <- function(df, cases_colname, date_colname, disease){
 # or just rename as 1...N years
 ## Summarise trends in data
 slope_and_pval_function <- function(df, xvar, yvar){
-  df <- as.data.frame(df)
-  
-  xvar <- seq(from = 1, to = length(df[, xvar]), by = 1)
 
-  # if(is.numeric(xvar) == FALSE) {
-  #   xvar <- as.numeric(df[, xvar])
-  # } else {
-  #   xvar <- df[, xvar]
-  # }
+  df <- df[, c(xvar, yvar)]
+  df <- df[complete.cases(df), ]
   
-  if(is.numeric(yvar) == FALSE) {
-    yvar <- as.numeric(df[, yvar])
-  } else {
-    yvar <- df[, yvar]
-  }
-  
-  df_trend <- lm(yvar ~ xvar)
-  df_slope <- unname(df_trend$coefficients[2])
-  df_pval <- cor.test(xvar, yvar)$p.value
-  
-  return(
+  if(nrow(df) > 2){
+    xvar <- seq(from = 1, to = length(df[, xvar]), by = 1)
+
+    
+    if(is.numeric(yvar) == FALSE) {
+      yvar <- as.numeric(df[, yvar])
+    } else {
+      yvar <- df[, yvar]
+    }
+    
+    df_trend <- lm(yvar ~ xvar)
+    df_slope <- unname(df_trend$coefficients[2])
+    df_pval <- cor.test(xvar, yvar)$p.value
+    
+    # return(
     list(
       'slope' = round(df_slope, 2)
       , 'pvalue' = round(df_pval, 2)
     )
-  )
+  } else {
+    list(
+      'slope' = NA
+      , 'pvalue' = NA
+    )
+  }
 }
 
 time_shift_calc <- function(date_vec){
@@ -273,11 +289,10 @@ time_shift_calc <- function(date_vec){
 }
 
 summarise_trends <- function(df){
-  
   # R0 vs year
   r0 <- slope_and_pval_function(df = df, xvar = 'Year', yvar = 'R0')
   names(r0) <- paste0('R0_', names(r0))
-
+  
   # outbreak duration vs year
   out_dur <- slope_and_pval_function(df = df, xvar = 'Year', yvar = 'outbreak_duration')
   names(out_dur) <- paste0('Outbreak_duration_', names(out_dur))
@@ -285,7 +300,7 @@ summarise_trends <- function(df){
   # duration between peaks vs year
   dur_peaks <- slope_and_pval_function(df = df, xvar = 'Year', yvar = 'duration_btwn_peaks')
   names(dur_peaks) <- paste0('Duration_btwn_peaks_', names(dur_peaks))
-
+  
   # Frequency of outbreaks (Number of outbreaks / number of years)
   outbreak_frequency <- round(length(df$period) / (max(as.numeric(df$Year)) - min(as.numeric(df$Year))), 2)
   names(outbreak_frequency) <- 'Outbreak_frequency'
@@ -299,7 +314,7 @@ summarise_trends <- function(df){
   start_time_df <- time_shift_calc(date_vec = df_annual_outbreaks$outbreak_start)
   onset <- slope_and_pval_function(df = start_time_df, xvar = 'Date', yvar = 'Time_shift')
   names(onset) <- paste0('Annual_shift_in_start_week_', names(onset))
-
+  
   # Shift in outbreak onset vs year
   peak_time_df <- time_shift_calc(date_vec = df_annual_outbreaks$outbreak_peak)
   peak <- slope_and_pval_function(df = peak_time_df, xvar = 'Date', yvar = 'Time_shift')
@@ -307,5 +322,4 @@ summarise_trends <- function(df){
   
   # output
   as.data.frame(c(r0, out_dur, dur_peaks, outbreak_frequency, onset, peak))
-  
 }
